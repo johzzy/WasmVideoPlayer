@@ -14,6 +14,7 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libavutil/fifo.h"
+#include "libavutil/imgutils.h"
 //#include "libswscale/swscale.h"
 
 #define MIN(X, Y)  ((X) < (Y) ? (X) : (Y))
@@ -158,7 +159,7 @@ int openCodecContext(AVFormatContext *fmtCtx, enum AVMediaType type, int *stream
     do {
         int streamIndex		= -1;
         AVStream *st		= NULL;
-        AVCodec *dec		= NULL;
+        const AVCodec *dec		= NULL;
         AVDictionary *opts	= NULL;
 
         ret = av_find_best_stream(fmtCtx, type, -1, -1, NULL, 0);
@@ -685,8 +686,8 @@ ErrorCode openDecoder(int *paramArray, int paramCount, long videoCallback, long 
     do {
         simpleLog("Opening decoder.");
 
-        av_register_all();
-        avcodec_register_all();
+        // av_register_all();
+        // avcodec_register_all();
 
         if (logLevel == kLogLevel_All) {
             av_log_set_callback(ffmpegLogCallback);
@@ -797,10 +798,10 @@ ErrorCode openDecoder(int *paramArray, int paramCount, long videoCallback, long 
         }
         */
         
-        decoder->videoSize = avpicture_get_size(
+        decoder->videoSize = av_image_get_buffer_size(
             decoder->videoCodecContext->pix_fmt,
             decoder->videoCodecContext->width,
-            decoder->videoCodecContext->height);
+            decoder->videoCodecContext->height, 1);
 
         decoder->videoBufferSize = 3 * decoder->videoSize;
         decoder->yuvBuffer = (unsigned char *)av_mallocz(decoder->videoBufferSize);
@@ -913,8 +914,7 @@ ErrorCode decodeOnePacket() {
     int decodedLen	= 0;
     int r			= 0;
 
-    AVPacket packet;
-    av_init_packet(&packet);
+    AVPacket* packet = av_packet_alloc();
     do {
         if (decoder == NULL) {
             ret = kErrorCode_Invalid_State;
@@ -926,21 +926,21 @@ ErrorCode decodeOnePacket() {
             break;
         }
 
-        packet.data = NULL;
-        packet.size = 0;
+        packet->data = NULL;
+        packet->size = 0;
 
-        r = av_read_frame(decoder->avformatContext, &packet);
+        r = av_read_frame(decoder->avformatContext, packet);
         if (r == AVERROR_EOF) {
             ret = kErrorCode_Eof;
             break;
         }
 
-        if (r < 0 || packet.size == 0) {
+        if (r < 0 || packet->size == 0) {
             break;
         }
 
         do {
-            ret = decodePacket(&packet, &decodedLen);
+            ret = decodePacket(packet, &decodedLen);
             if (ret != kErrorCode_Success) {
                 break;
             }
@@ -949,11 +949,12 @@ ErrorCode decodeOnePacket() {
                 break;
             }
 
-            packet.data += decodedLen;
-            packet.size -= decodedLen;
-        } while (packet.size > 0);
+            packet->data += decodedLen;
+            packet->size -= decodedLen;
+        } while (packet->size > 0);
     } while (0);
-    av_packet_unref(&packet);
+    av_packet_unref(packet);
+    av_packet_free(&packet);
     return ret;
 }
 
@@ -975,10 +976,9 @@ ErrorCode seekTo(int ms, int accurateSeek) {
         avcodec_flush_buffers(decoder->audioCodecContext);
 
         // Trigger seek callback
-        AVPacket packet;
-        av_init_packet(&packet);
-        av_read_frame(decoder->avformatContext, &packet);
-
+        AVPacket* packet = av_packet_alloc();
+        av_read_frame(decoder->avformatContext, packet);
+        av_packet_free(&packet);
         decoder->beginTimeOffset = (double)ms / 1000;
         return kErrorCode_Success;
     }

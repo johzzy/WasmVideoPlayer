@@ -77,7 +77,7 @@ function Player() {
 
 Player.prototype.initDownloadWorker = function () {
     var self = this;
-    this.downloadWorker = new Worker("downloader.js");
+    this.downloadWorker = new Worker("js/downloader.js");
     this.downloadWorker.onmessage = function (evt) {
         var objData = evt.data;
         switch (objData.t) {
@@ -93,7 +93,7 @@ Player.prototype.initDownloadWorker = function () {
 
 Player.prototype.initDecodeWorker = function () {
     var self = this;
-    this.decodeWorker = new Worker("decoder.js");
+    this.decodeWorker = new Worker("js/decoder.js");
     this.decodeWorker.onmessage = function (evt) {
         var objData = evt.data;
         switch (objData.t) {
